@@ -1,64 +1,54 @@
 # Gestão de Mínimo e Máximo - Dashboard Analítico (BI)
 
-Este projeto é uma aplicação web completa (Full-Stack) projetada para análises aprofundadas sobre o controle de estoque mínimo e máximo da rede de supermercados, com foco na Estrutura Mercadológica. O objetivo da ferramenta é agrupar, de maneira dinâmica e instantânea, dados volumosos vindos de uma conexão ODBC (banco de dados IBM DB2), atuando como uma ferramenta de BI (Business Intelligence) moderna.
+Este projeto é uma aplicação web completa (Full-Stack) projetada para análises aprofundadas sobre o controle de estoque mínimo e máximo da rede de supermercados, com foco na Estrutura Mercadológica. O objetivo da ferramenta é agrupar, de maneira dinâmica e instantânea, dados volumosos vindos de uma conexão ODBC (banco de dados IBM DB2), atuando como uma ferramenta de BI (Business Intelligence) moderna com recursos de simulação e edição de dados.
+
+## ✨ Novidades e Funcionalidades Atuais
+
+* **Edição de Limites e Integração com ERP**: Permite edição em tempo real das Quantidades Mínimas e Máximas, além de parâmetros como Referência, Modelo, Margens e flag de Inativo para Compras.
+* **Capital Liberado (Simulação)**: O app calcula em tempo real o "Dinheiro Descongelado" (Capital Liberado) quando os gestores otimizam limites irreais de compras, mostrando o impacto financeiro das edições na mesma hora.
+* **Alta Performance com Web Workers**: O agrupamento de dezenas de milhares de registros hierárquicos na *Pivot Table* (Tabela Dinâmica) foi delegado a um `TreeWorker` que roda em segundo plano.
+* **Cálculo de UI em Deltas**: Os totais globais e de loja da tela são atualizados em milissegundos sem congelar a aplicação graças a uma arquitetura baseada em Deltas (calcula apenas a diferença do produto alterado, sem iterar na base inteira).
+* **Módulo de Performance Promocional (90 Dias)**: Acompanhamento de KPIs detalhados como Venda Total, Lucro Bruto, Margem, Elasticidade e quebra detalhada do impacto promocional (TV, Encarte, Rebaixo) lado a lado com os estoques, além de visualização das Perdas.
 
 ## 🏗️ Arquitetura do Sistema
 
 O sistema é dividido em duas camadas principais que rodam de maneira independente:
 
 ### 1. Backend (Node.js + Express)
-O backend atua como uma ponte de comunicação com o banco de dados. Ele foi projetado para extrair e pré-processar os dados usando alta performance via SQL.
-- **Porta padrão:** 3001 (`http://localhost:3001/api/estoque`)
+O backend atua como uma ponte de comunicação de altíssimo desempenho com o banco de dados via SQL.
+- **Porta padrão:** 8900 (`http://localhost:8900`)
 - **Driver de Conexão:** IBM DB2 ODBC DRIVER (via pacote `odbc`).
-- **Função Principal:** Executa as regras de negócio matemáticas mais pesadas já no momento da consulta ao banco, entregando um JSON pronto e veloz para a interface, incluindo os cálculos de *Média de Venda Mensal* e as formatações de curva.
+- **Endpoints Chave:** `/api/estoque`, `/api/performance`, `/api/modelos`, `/api/estoque/limites` (para salvar).
 
 ### 2. Frontend (React + Vite)
-O Frontend é a interface visual com a qual o usuário interage.
-- **Porta padrão:** 5173 (`http://localhost:5173`)
-- **Design System:** Construído inteiramente com **Vanilla CSS** utilizando a técnica de *Glassmorphism* (cartões translúcidos sobre um fundo Dark Mode dinâmico), tipografia `Inter` e alta responsividade.
-- **Pivot Tables (Tabelas Dinâmicas):** Em vez de apresentar dezenas de milhares de registros brutos, o painel agrupa os dados instantaneamente sob 4 grandes pilares:
-  - **LOJA**
-  - **CURVA**
-  - **COMPRADOR**
-  - **ESTRUTURA MERCADOLÓGICA (Seção)**
+A interface de usuário projetada visando o máximo em User Experience para Big Data.
+- **Porta padrão Vite:** 5173 (`http://localhost:5173`)
+- **Design System:** Construído inteiramente com **Vanilla CSS** utilizando a técnica de *Glassmorphism* (cartões translúcidos sobre um fundo Dark Mode dinâmico) e tipografia `Inter`.
+- **Pivot Tables Inteligentes:** Em vez de apresentar milhares de registros brutos, a interface agrupa dados dinamicamente usando componentes memoizados para que a digitação nas células de tabela seja instantânea e livre de travamentos.
 
-## 📊 Regras de Negócio e Fórmulas
+## 📊 Principais Regras de Negócio Otimizadas
 
-Para garantir total fidelidade com os controles do Excel, as seguintes fórmulas foram embarcadas diretamente no motor do sistema:
-
-* **VALOR ESTOQUE MAX. ATUAL:** 
-  Multiplicação da Quantidade Máxima Atual pelo Preço de Varejo (`ESTOQUE_MAXIMO_ATUAL * PRECO_VAREJO`).
-* **VALOR ESTOQUE MAX. NOVO:** 
-  Soma do valor em dinheiro do Estoque Máximo Atual com a adição gerada pelo novo cadastro (`VALOR_ESTOQUE_MAX_ATUAL + (ESTOQUE_MAXIMO_NOVO * PRECO_VAREJO)`).
-* **DIFERENÇA DE ESTOQUE:**
-  Subtração simples (`ESTOQUE MAX NOVO - ESTOQUE MAX ATUAL`), colorida dinamicamente no painel (vermelho para quedas, verde para adições).
-* **VENDA VALOR TRIMESTRE:**
-  Baseada nos dias de venda ativos, calculada como `((QTDE_VENDA / DIAS_VENDA) * 30 * PRECO_VAREJO)`.
-* **MÉDIA VENDA MENSAL:**
-  Taxa diária sobre 90 dias, calculada como `(VENDA_VALOR_TRIMESTRE / 90) * 31.5`.
-* **COBERTURA DIAS:**
-  Relação da capacidade global de estoque (`(VALOR ESTOQUE MAX. NOVO / MÉDIA VENDA MENSAL) * 30`).
-
-> ⚠️ *Nota Técnica: Para todas as divisões citadas acima, o sistema possui travas anti-quebra (NULLIF no Backend e condicionais booleanas no Frontend) que impedem erros matemáticos de Divisão por Zero caso não haja dias de venda computados.*
+* **VALOR ESTOQUE MAX. ATUAL:** `ESTOQUE_MAXIMO_ATUAL * PRECO_VAREJO`
+* **NOVO TETO DE ESTOQUE:** Calculado a cada tecla na simulação (`QTD_MAX_DIGITADA * PRECO_VAREJO`).
+* **CAPITAL LIBERADO:** Acúmulo de reduções de limite (`NOVO TETO - VALOR MAX ATUAL`) apenas quando o resultado é negativo (corte de estoque).
+* **COBERTURA (DIAS):** Baseada em uma média móvel robusta calculada contra o valor em dinheiro do estoque novo para descobrir a autonomia da gôndola.
 
 ## 🚀 Como Executar Localmente
 
-Para rodar o projeto, você precisará abrir **dois terminais (PowerShell ou CMD)** na pasta raiz do projeto (`h:\Meus Testes\gestao-min-max`).
+Você precisará de dois terminais (PowerShell ou CMD) na pasta raiz do projeto.
 
 ### Terminal 1: Iniciando o Motor (Backend)
 ```powershell
 cd backend
-npm start
+npm install
+npm run dev
 ```
-*Aguarde a mensagem "Servidor rodando na porta 3001". Isso significa que ele está pronto para puxar dados do DB2.*
+*Aguarde a mensagem indicando que o servidor está rodando na porta 8900.*
 
 ### Terminal 2: Iniciando a Tela (Frontend)
 ```powershell
 cd frontend
+npm install
 npm run dev
 ```
-*O Vite irá iniciar o servidor de interface gráfica. Segure a tecla `Ctrl` e clique no link `http://localhost:5173` que aparecerá no terminal para abrir o navegador.*
-
-## 🔍 Funcionalidades de Filtragem
-Do lado esquerdo do painel, há uma barra de Slicers (Filtros).
-Qualquer botão clicado nestes filtros fará com que toda a base de dados em memória seja recalculada, reorganizando instantaneamente os totais gerenciais das 4 tabelas e os totais gerais nos rodapés.
+*O Vite irá iniciar o servidor de interface gráfica. Acesse `http://localhost:5173` no seu navegador.*
