@@ -1,0 +1,187 @@
+.pivot-table {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+  border-radius: 8px;
+}
+
+.pivot-table table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.pivot-table th {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background-color: #162c46; /* Cor sólida para sobrepor as linhas roladas */
+  color: var(--text-primary);
+  padding: 0.4rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  border: 1px solid var(--glass-border);
+  white-space: nowrap;
+  height: 32px;
+}
+
+.pivot-table td {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+  transition: background-color 0.2s;
+  white-space: nowrap;
+  height: 32px;
+}
+
+.pivot-table tbody tr:hover td {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.pivot-table tbody tr:nth-child(even) td {
+  background-color: rgba(255, 255, 255, 0.025);
+}
+
+/* Linha Selecionada (Highlight) */
+.pivot-table tbody tr.row-selected td {
+  background-color: rgba(56, 189, 248, 0.25) !important;
+}
+
+.pivot-table tbody tr.depth-0 {
+  font-weight: 600;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+.pivot-table tbody tr.depth-1 {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+.pivot-table tbody tr.depth-2 {
+  font-style: italic;
+}
+
+.total-row td {
+  font-weight: 700;
+  background-color: var(--text-primary) !important;
+  color: var(--bg-color) !important;
+  border-top: 2px solid var(--bg-color);
+}
+
+.text-danger { color: #ff6b6b; }
+.text-success { color: #51cf66; }
+.total-row .text-danger { color: #c92a2a !important; }
+.total-row .text-success { color: #2b8a3e !important; }
+
+.text-right { text-align: right; }
+
+/* Sticky Column - Estrutura Mercadológica */
+.pivot-table th:first-child,
+.pivot-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background-color: var(--bg-color);
+  border: 1px solid #334155;
+  border-right: none;
+  box-shadow: inset 0 -1px 0 #334155, 2px 0 0 0 #334155;
+  background-clip: padding-box;
+  min-width: 300px;
+  max-width: 600px;
+  white-space: normal; /* Permite quebrar a linha para exibir tudo */
+  word-wrap: break-word;
+}
+
+.pivot-table th:first-child {
+  z-index: 20;
+  background-color: #162c46; /* Fundo base misturado com o tom azul do cabeçalho */
+}
+
+/* Ajustes de hover e zebra para a coluna fixa */
+.pivot-table tbody tr:nth-child(even) td:first-child {
+  background-color: #131c2e;
+}
+.pivot-table tbody tr.depth-0 td:first-child { background-color: #05080f; }
+.pivot-table tbody tr.depth-1 td:first-child { background-color: #0b111a; }
+.pivot-table tbody tr:hover td:first-child {
+  background-color: #1e293b;
+}
+.total-row td:first-child {
+  background-color: var(--text-primary) !important;
+  color: var(--bg-color) !important;
+}
+
+/* Row Selection */
+.pivot-table tbody tr.row-selected td {
+  background-color: rgba(56, 189, 248, 0.15) !important;
+  color: #ffffff !important;
+}
+.pivot-table tbody tr.row-selected td:first-child {
+  /* Must be solid to hide scrolling columns underneath */
+  background-color: #17324b !important; 
+  border-left: 3px solid #38bdf8 !important;
+}
+
+/* Forçar apenas a cor da fonte branca nos textos normais, preservando as cores originais dos inputs e selects */
+.pivot-table tbody tr.row-selected td {
+  color: #ffffff !important;
+}
+.pivot-table tbody tr.row-selected td span:not([class*="badge-"]):not([class*="text-"]) {
+  color: #ffffff !important;
+}
+
+.text-center { text-align: center; }
+.mr-1 { margin-right: 0.25rem; }
+
+/* Badge de Cobertura Semântico */
+.badge-cobertura {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  min-width: 45px;
+  text-align: center;
+}
+
+.bg-danger { background-color: #ef4444; }
+.bg-warning { background-color: #f59e0b; }
+.bg-success { background-color: #10b981; }
+.text-white { color: #ffffff; }
+.text-dark { color: #1e293b; }
+
+/* Badge GMROI */
+.badge-gmroi {
+  display: inline-block;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.75rem;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* Edit Input */
+.edit-input {
+  width: 60px;
+  padding: 0.2rem 0.4rem;
+  background-color: #1e293b; /* Fundo sólido escuro para garantir que não fique branco do navegador */
+  border: 1px solid var(--accent-color);
+  color: #ffffff; /* Letra branca para contraste no fundo escuro */
+  border-radius: 4px;
+  text-align: right;
+  font-family: inherit;
+  font-weight: 600;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3);
+}
+
+/* Chrome, Safari, Edge, Opera num input hide arrows */
+.edit-input::-webkit-outer-spin-button,
+.edit-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

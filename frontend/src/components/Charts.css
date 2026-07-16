@@ -1,0 +1,40 @@
+.chart-container {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 12px;
+}
+
+.chart-container h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.custom-tooltip {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid var(--glass-border);
+  padding: 10px 15px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  backdrop-filter: blur(10px);
+}
+
+.custom-tooltip .label {
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 5px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding-bottom: 5px;
+}
+
+.custom-tooltip p {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
