@@ -23,10 +23,16 @@ const auditDb = new sqlite3.Database(dbPath, (err) => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE,
             password TEXT
-        )`, () => {
+        )`, async () => {
+            // Usa bcrypt para gerar hash das senhas
+            const bcrypt = require('bcryptjs');
+            const salt = await bcrypt.genSalt(10);
+            const hashAdmin = await bcrypt.hash('admin123', salt);
+            const hashComprador = await bcrypt.hash('123456', salt);
+
             // Semeia usuários básicos caso a tabela esteja vazia (ignorando erros de unique)
-            auditDb.run(`INSERT OR IGNORE INTO users (username, password) VALUES ('admin', 'admin123')`);
-            auditDb.run(`INSERT OR IGNORE INTO users (username, password) VALUES ('comprador', '123456')`);
+            auditDb.run(`INSERT OR IGNORE INTO users (username, password) VALUES ('admin', ?)`, [hashAdmin]);
+            auditDb.run(`INSERT OR IGNORE INTO users (username, password) VALUES ('comprador', ?)`, [hashComprador]);
         });
     }
 });
@@ -63,9 +69,18 @@ function getAuditoria() {
 
 function authenticateUser(username, password) {
     return new Promise((resolve, reject) => {
-        auditDb.get(`SELECT username FROM users WHERE username = ? AND password = ?`, [username, password], (err, row) => {
-            if (err) reject(err);
-            else resolve(row || null); // Retorna o usuário se bater, null se falhar
+        auditDb.get(`SELECT username, password as hash FROM users WHERE username = ?`, [username], async (err, row) => {
+            if (err) return reject(err);
+            if (!row) return resolve(null);
+            
+            const bcrypt = require('bcryptjs');
+            const isMatch = await bcrypt.compare(password, row.hash);
+            
+            if (isMatch) {
+                resolve({ username: row.username });
+            } else {
+                resolve(null);
+            }
         });
     });
 }

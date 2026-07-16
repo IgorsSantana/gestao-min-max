@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useDeferredValue, Suspense, lazy } from 'react';
-import axios from 'axios';
+import api from './services/api';
+import useStore from './store/useStore';
 import toast, { Toaster } from 'react-hot-toast';
 import { RefreshCw, AlertTriangle, TrendingUp, Activity, Save, PieChart, Info, X, Clock, Menu, Filter, Search, Sparkles } from 'lucide-react';
 import SidebarFilters from './components/SidebarFilters';
@@ -37,8 +38,7 @@ function LoginScreen({ onLogin }) {
     setLoading(true);
     setError('');
     try {
-      const baseUrl = `http://${window.location.hostname}:8900`;
-      const response = await axios.post(`${baseUrl}/api/login`, { username, password });
+      const response = await api.post('/api/login', { username, password });
       if (response.data.success) {
         onLogin(response.data.username);
       }
@@ -140,11 +140,12 @@ function App() {
   // State para abrir o modal de simulação
   const [isSimulateModalOpen, setIsSimulateModalOpen] = useState(false);
 
-  // State para guardar alterações do usuário na tabela antes de enviar ao Banco
-  const [draftEdits, setDraftEdits] = useState({});
-
-  // Produtos virtuais criados para simulação
-  const [simulatedProducts, setSimulatedProducts] = useState([]);
+  // Zustand Global State (Substitui os states locais)
+  const draftEdits = useStore((state) => state.draftEdits);
+  const setDraftEdits = useStore((state) => state.setDraftEdits);
+  const clearDraftEdits = useStore((state) => state.clearDraftEdits);
+  const simulatedProducts = useStore((state) => state.simulatedProducts);
+  const addSimulatedProducts = useStore((state) => state.addSimulatedProducts);
 
   // Novidades e Docs
   const [showWhatsNew, setShowWhatsNew] = useState(false);
@@ -157,13 +158,12 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const baseUrl = `http://${window.location.hostname}:8900`;
-      const url = `${baseUrl}/api/estoque${force ? '?force=true' : ''}`;
+      const url = `/api/estoque${force ? '?force=true' : ''}`;
       
       const [response, resModelos, resPerf] = await Promise.all([
-        axios.get(url),
-        axios.get(`${baseUrl}/api/modelos`),
-        axios.get(`${baseUrl}/api/performance`)
+        api.get(url),
+        api.get('/api/modelos'),
+        api.get('/api/performance')
       ]);
 
       setModelosList(resModelos.data);
@@ -442,12 +442,17 @@ function App() {
     setSaving(true);
     try {
       const auditLogs = [];
+      
+      // Otimização O(1): Cria um mapa do dataset para busca instantânea em vez de rodar .find() para cada rascunho
+      const dataMap = new Map();
+      data.forEach(r => dataMap.set(`${r.EMPRESA}_${r.COD_INTERNO}`, r));
+
       const updates = Object.values(draftEdits)
         .filter(draft => !String(draft.idSubProduto).startsWith('SIM-'))
         .map(draft => {
           // Encontra o dado original para mandar o que não foi modificado (caso editou só o max, manda o min original)
           const rowId = `${draft.idEmpresa}_${draft.idSubProduto}`;
-          const originalRow = data.find(r => r.EMPRESA === draft.idEmpresa && r.COD_INTERNO === draft.idSubProduto);
+          const originalRow = dataMap.get(rowId);
           
           if (originalRow) {
             const minAntigo = parseFloat(originalRow.ESTOQUE_MINIMO_ATUAL);
@@ -500,10 +505,9 @@ function App() {
         return;
       }
 
-      const baseUrl = `http://${window.location.hostname}:8900`;
-      await axios.post(`${baseUrl}/api/estoque/limites`, { updates, auditLogs });
+      await api.post('/api/estoque/limites', { updates, auditLogs });
       toast.success(`Sucesso! ${updates.length} produto(s) atualizado(s) no ERP.`);
-      setDraftEdits({}); // Limpa os rascunhos
+      clearDraftEdits(); // Limpa os rascunhos
       fetchData(true); // Recarrega os dados do banco forçando bypass do cache
     } catch (err) {
       console.error(err);
@@ -1078,7 +1082,7 @@ function App() {
                   <strong>{Object.keys(draftEdits).length}</strong> produto(s) modificado(s)
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button className="btn-danger" onClick={() => setDraftEdits({})}>
+                  <button className="btn-danger" onClick={() => clearDraftEdits()}>
                     <X size={18} /> Descartar Alterações
                   </button>
                   <button className="btn-save" onClick={() => setIsConfirmingSave(true)} disabled={saving}>

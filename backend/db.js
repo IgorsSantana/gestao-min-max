@@ -4,7 +4,13 @@ require('dotenv').config();
 // Força o driver ODBC do DB2 a converter os dados para UTF-8, evitando o ''
 process.env.DB2CODEPAGE = '1208';
 
-const connectionString = process.env.ODBC_CONNECTION_STRING || "DRIVER={IBM DB2 ODBC DRIVER};DATABASE=SAB;HOSTNAME=10.64.1.11;PORT=50000;PROTOCOL=TCPIP;UID=db2user_ro;PWD=Sup3rs4nt0;";
+const connectionString = process.env.ODBC_CONNECTION_STRING;
+
+if (!connectionString) {
+    console.error("FATAL ERROR: A variável de ambiente ODBC_CONNECTION_STRING não foi encontrada.");
+    console.error("Verifique o arquivo .env no diretório backend.");
+    process.exit(1);
+}
 
 const query = `
 SELECT 
@@ -246,70 +252,91 @@ async function updateLimites(updates) {
 
 
         for (const update of updates) {
-            await connection.query(sqlCompras, [
-                update.QTDESTMINIMO,
-                update.QTDESTMAXIMO,
-                update.IDEMPRESA,
-                update.IDPRODUTO,
-                update.IDSUBPRODUTO
-            ]);
+            const productQueries = [];
+
+            productQueries.push(
+                connection.query(sqlCompras, [
+                    update.QTDESTMINIMO,
+                    update.QTDESTMAXIMO,
+                    update.IDEMPRESA,
+                    update.IDPRODUTO,
+                    update.IDSUBPRODUTO
+                ])
+            );
 
             if (update.INATIVO_COMPRA !== undefined) {
-                await connection.query(
-                    `UPDATE DBA.PRODUTO_GRADE SET FLAGINATIVOCOMPRA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                    [update.INATIVO_COMPRA, update.IDPRODUTO, update.IDSUBPRODUTO]
+                productQueries.push(
+                    connection.query(
+                        `UPDATE DBA.PRODUTO_GRADE SET FLAGINATIVOCOMPRA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                        [update.INATIVO_COMPRA, update.IDPRODUTO, update.IDSUBPRODUTO]
+                    )
                 );
             }
 
             if (update.REFERENCIA !== undefined) {
-                await connection.query(
-                    `UPDATE DBA.PRODUTO_GRADE SET REFERENCIA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                    [update.REFERENCIA, update.IDPRODUTO, update.IDSUBPRODUTO]
+                productQueries.push(
+                    connection.query(
+                        `UPDATE DBA.PRODUTO_GRADE SET REFERENCIA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                        [update.REFERENCIA, update.IDPRODUTO, update.IDSUBPRODUTO]
+                    )
                 );
             }
 
             if (update.MODELO !== undefined) {
-                const modelStr = update.MODELO ? update.MODELO.trim() : '';
-                let idModelo = null;
-                
-                if (modelStr) {
-                    const existing = await connection.query(`SELECT IDMODELO FROM DBA.PRODUTO_MODELO WHERE DESCRMODELO = ?`, [modelStr]);
-                    if (existing && existing.length > 0) {
-                        idModelo = existing[0].IDMODELO;
-                    } else {
-                        // Inserir novo modelo e pegar o novo ID
-                        const maxIdResult = await connection.query(`SELECT COALESCE(MAX(IDMODELO), 0) + 1 AS NEW_ID FROM DBA.PRODUTO_MODELO`);
-                        idModelo = maxIdResult[0].NEW_ID;
-                        await connection.query(`INSERT INTO DBA.PRODUTO_MODELO (IDMODELO, DESCRMODELO) VALUES (?, ?)`, [idModelo, modelStr]);
+                // A lógica de modelo envolve SELECT MAX e INSERT, sendo mais segura de rodar isoladamente 
+                // para evitar race conditions no mesmo loop (embora encapsulada em uma promessa assíncrona)
+                const modelPromise = (async () => {
+                    const modelStr = update.MODELO ? update.MODELO.trim() : '';
+                    let idModelo = null;
+                    
+                    if (modelStr) {
+                        const existing = await connection.query(`SELECT IDMODELO FROM DBA.PRODUTO_MODELO WHERE DESCRMODELO = ?`, [modelStr]);
+                        if (existing && existing.length > 0) {
+                            idModelo = existing[0].IDMODELO;
+                        } else {
+                            const maxIdResult = await connection.query(`SELECT COALESCE(MAX(IDMODELO), 0) + 1 AS NEW_ID FROM DBA.PRODUTO_MODELO`);
+                            idModelo = maxIdResult[0].NEW_ID;
+                            await connection.query(`INSERT INTO DBA.PRODUTO_MODELO (IDMODELO, DESCRMODELO) VALUES (?, ?)`, [idModelo, modelStr]);
+                        }
                     }
-                }
-                
-                await connection.query(
-                    `UPDATE DBA.PRODUTO_GRADE SET IDMODELO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                    [idModelo, update.IDPRODUTO, update.IDSUBPRODUTO]
-                );
+                    
+                    await connection.query(
+                        `UPDATE DBA.PRODUTO_GRADE SET IDMODELO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                        [idModelo, update.IDPRODUTO, update.IDSUBPRODUTO]
+                    );
+                })();
+                productQueries.push(modelPromise);
             }
 
             if (update.PERC_COMPETITIVIDADE !== undefined) {
-                await connection.query(
-                    `UPDATE DBA.PRODUTO_GRADE SET LARGURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                    [update.PERC_COMPETITIVIDADE, update.IDPRODUTO, update.IDSUBPRODUTO]
+                productQueries.push(
+                    connection.query(
+                        `UPDATE DBA.PRODUTO_GRADE SET LARGURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                        [update.PERC_COMPETITIVIDADE, update.IDPRODUTO, update.IDSUBPRODUTO]
+                    )
                 );
             }
 
             if (update.PERC_LUCRO_ENCARTE !== undefined) {
-                await connection.query(
-                    `UPDATE DBA.PRODUTO_GRADE SET COMPRIMENTO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                    [update.PERC_LUCRO_ENCARTE, update.IDPRODUTO, update.IDSUBPRODUTO]
+                productQueries.push(
+                    connection.query(
+                        `UPDATE DBA.PRODUTO_GRADE SET COMPRIMENTO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                        [update.PERC_LUCRO_ENCARTE, update.IDPRODUTO, update.IDSUBPRODUTO]
+                    )
                 );
             }
 
             if (update.PERC_LUCRO_TV !== undefined) {
-                await connection.query(
-                    `UPDATE DBA.PRODUTO_GRADE SET ALTURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                    [update.PERC_LUCRO_TV, update.IDPRODUTO, update.IDSUBPRODUTO]
+                productQueries.push(
+                    connection.query(
+                        `UPDATE DBA.PRODUTO_GRADE SET ALTURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                        [update.PERC_LUCRO_TV, update.IDPRODUTO, update.IDSUBPRODUTO]
+                    )
                 );
             }
+
+            // Aguarda todas as queries deste produto terminarem em paralelo
+            await Promise.all(productQueries);
         }
 
         await connection.commit();

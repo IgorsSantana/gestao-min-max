@@ -25,6 +25,11 @@ const PORT = process.env.PORT || 8900;
 let cacheData = null;
 let cacheTimestamp = null;
 const CACHE_TTL = 60 * 60 * 1000; // 1 hora
+
+let cachePerfData = null;
+let cachePerfTimestamp = null;
+const CACHE_PERF_TTL = 60 * 60 * 1000; // 1 hora
+
 const lock = new AsyncLock();
 
 app.get('/api/estoque', async (req, res) => {
@@ -77,8 +82,31 @@ app.get('/api/modelos', async (req, res) => {
 
 app.get('/api/performance', async (req, res) => {
     try {
+        const forceRefresh = req.query.force === 'true';
+        let now = Date.now();
+        let isCacheValid = cachePerfData && cachePerfTimestamp && (now - cachePerfTimestamp < CACHE_PERF_TTL);
+
+        if (isCacheValid && !forceRefresh) {
+            console.log(`[Cache] Servindo dados de performance direto da RAM`);
+            return res.json(cachePerfData);
+        }
+
         console.log(`[DB2] Buscando dados de performance (Vendas/Perdas 90d)...`);
-        const perfData = await getPerformanceData();
+        
+        const perfData = await lock.acquire('cache_perf_lock', async () => {
+            now = Date.now();
+            isCacheValid = cachePerfData && cachePerfTimestamp && (now - cachePerfTimestamp < CACHE_PERF_TTL);
+            if (isCacheValid && !forceRefresh) {
+                console.log(`[Cache] Dados de performance obtidos logo após liberação do Lock.`);
+                return cachePerfData;
+            }
+
+            const freshData = await getPerformanceData();
+            cachePerfData = freshData;
+            cachePerfTimestamp = now;
+            return freshData;
+        });
+
         res.json(perfData);
     } catch (error) {
         console.error("Erro na API de Performance:", error);

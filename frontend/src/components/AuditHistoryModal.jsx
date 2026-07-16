@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { X, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function AuditHistoryModal({ isOpen, onClose }) {
@@ -11,8 +11,7 @@ export default function AuditHistoryModal({ isOpen, onClose }) {
     setLoading(true);
     setError(null);
     try {
-      const baseUrl = `http://${window.location.hostname}:8900`;
-      const response = await axios.get(`${baseUrl}/api/auditoria`);
+      const response = await api.get('/api/auditoria');
       setLogs(response.data);
     } catch (err) {
       console.error(err);
