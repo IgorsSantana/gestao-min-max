@@ -19,6 +19,9 @@ app.use(compression()); // Habilita compressão Gzip/Deflate
 app.use(cors());
 app.use(express.json());
 
+// Adiciona headers de cache estático para rotas não-API (se aplicável) e otimiza ETag
+app.set('etag', 'strong');
+
 const PORT = process.env.PORT || 8900;
 
 // Cache em Memória com Bloqueios (AsyncLock)
@@ -40,6 +43,7 @@ app.get('/api/estoque', async (req, res) => {
 
         if (isCacheValid && !forceRefresh) {
             console.log(`[Cache] Servindo dados de estoque direto da RAM (${cacheData.length} itens)`);
+            res.setHeader('Cache-Control', 'public, max-age=300'); // Cache no navegador por 5 min
             return res.json(cacheData);
         }
 
@@ -88,6 +92,7 @@ app.get('/api/performance', async (req, res) => {
 
         if (isCacheValid && !forceRefresh) {
             console.log(`[Cache] Servindo dados de performance direto da RAM`);
+            res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache no navegador por 1h
             return res.json(cachePerfData);
         }
 

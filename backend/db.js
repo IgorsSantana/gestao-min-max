@@ -108,12 +108,8 @@ where
     UPPER(COALESCE(SC.DESCRSECAO, '')) NOT LIKE '%CONSUMO%' and
     PR.IDSECAO <> 98
 ) AS T
-order by
-    T.SECAO,
-    T.GRUPO,
-    T.SUBGRUPO,
-    T.DESCRICAO_PRODUTO,
-    T.EMPRESA
+-- ORDER BY removido no backend para economizar CPU do DB2.
+-- O frontend já faz a ordenação via Web Worker no buildTree.
 `;
 
 async function getEstoqueData() {

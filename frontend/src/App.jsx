@@ -3,14 +3,14 @@ import api from './services/api';
 import useStore from './store/useStore';
 import toast, { Toaster } from 'react-hot-toast';
 import { RefreshCw, AlertTriangle, TrendingUp, Activity, Save, PieChart, Info, X, Clock, Menu, Filter, Search, Sparkles, Download } from 'lucide-react';
-import * as XLSX from 'xlsx';
+// Import do XLSX removido do topo para ser feito via dynamic import no momento do clique
 import SidebarFilters from './components/SidebarFilters';
 import PivotTable from './components/PivotTable';
 const SimulateProductModal = lazy(() => import('./components/SimulateProductModal'));
 const AuditHistoryModal = lazy(() => import('./components/AuditHistoryModal'));
 const WhatsNewModal = lazy(() => import('./components/WhatsNewModal'));
 const DocsModal = lazy(() => import('./components/DocsModal'));
-import { LojaBarChart, CurvaBarChart, CapitalScatterChart } from './components/Charts';
+// Removido import estático de Charts que não está sendo usado e pesa muito no bundle inicial
 import './App.css';
 import logoImg from './assets/Logo.png';
 
@@ -253,7 +253,7 @@ function App() {
         perfMap[key].perdaTotal += (parseFloat(l.SUM_VALPERDA) || 0);
       });
 
-      // Filtro agressivo de Frontend (Garantia dupla anti-cache/case-sensitive)
+      // Mapeamento otimizado usando map para o array de forma rápida
       const cleanData = response.data.map(item => {
         const LOJAS_MAP = {
           1: 'BCS',
@@ -365,13 +365,15 @@ function App() {
     });
   }, [allData, deferredFilters, debouncedSearchQuery, deferredSpecialFilters]);
 
-  const handleExportXLS = () => {
+  const handleExportXLS = async () => {
     if (!filteredData || filteredData.length === 0) {
       toast.error('Não há dados para exportar com os filtros atuais.');
       return;
     }
 
     try {
+      // Dynamic import do XLSX apenas quando o usuário clica no botão
+      const XLSX = await import('xlsx');
       // Formata os dados para a planilha
       const dataToExport = filteredData.map(item => ({
         'Loja': item.NOME_LOJA,
