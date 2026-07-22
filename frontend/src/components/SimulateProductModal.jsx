@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { X, Plus, AlertCircle, Activity } from 'lucide-react';
+import { X, Plus, AlertCircle, Activity, Edit2 } from 'lucide-react';
+import useStore from '../store/useStore';
 
-const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
+const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation, onUpdateSimulation, setFilters, simulationToEdit }) => {
   if (!isOpen) return null;
 
   // Extract unique hierarchies
@@ -12,6 +13,7 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
   const [secao, setSecao] = useState('');
   const [grupo, setGrupo] = useState('');
   const [subgrupo, setSubgrupo] = useState('');
+  const [papelCategoria, setPapelCategoria] = useState('');
   const [isSimulating, setIsSimulating] = useState(false);
 
   const [descricao, setDescricao] = useState('');
@@ -19,6 +21,80 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
   const [preco, setPreco] = useState('');
   const [mediaVenda, setMediaVenda] = useState('');
   const [max, setMax] = useState('');
+  const [diasEstoque, setDiasEstoque] = useState('');
+
+  const handleMaxChange = (val) => {
+    setMax(val);
+    const m = parseFloat(val) || 0;
+    const v = parseFloat(mediaVenda) || 0;
+    const p = parseFloat(preco) || 0;
+    
+    if (v > 0 && p > 0) {
+      const dailySales = (v / p) / 30;
+      setDiasEstoque(Math.round(m / dailySales));
+    } else {
+      setDiasEstoque('');
+    }
+  };
+
+  const handleDiasChange = (val) => {
+    setDiasEstoque(val);
+    const d = parseFloat(val) || 0;
+    const v = parseFloat(mediaVenda) || 0;
+    const p = parseFloat(preco) || 0;
+    if (v > 0 && p > 0) {
+      const dailySales = (v / p) / 30;
+      const calcMax = Math.round(d * dailySales);
+      setMax(calcMax);
+    }
+  };
+
+  // Se o preço ou a venda esperada mudarem, recalcula os dias com base na Qtd Máxima atual
+  React.useEffect(() => {
+    const m = parseFloat(max) || 0;
+    const v = parseFloat(mediaVenda) || 0;
+    const p = parseFloat(preco) || 0;
+    
+    if (v > 0 && p > 0 && m > 0) {
+      const dailySales = (v / p) / 30;
+      setDiasEstoque(Math.round(m / dailySales));
+    }
+  }, [mediaVenda, preco, max]);
+
+  const simulatedProducts = useStore(state => state.simulatedProducts);
+  const draftEdits = useStore(state => state.draftEdits);
+
+  React.useEffect(() => {
+    if (simulationToEdit) {
+      const edits = simulatedProducts.filter(p => p.COD_INTERNO === simulationToEdit);
+      if (edits.length > 0) {
+        const first = edits[0];
+        setSecao(first.DESCRICAO_SECAO || '');
+        setGrupo(first.DESCRICAO_GRUPO || '');
+        setSubgrupo(first.DESCRICAO_SUBGRUPO || '');
+        setPapelCategoria(first.PAPEL_CATEGORIA || '');
+        setDescricao(first.DESCRICAO_PRODUTO?.replace(' (SIMULAÇÃO)', '') || '');
+        setCusto(first.CUSTO_GERENC || '');
+        setPreco(first.PRECO_VAREJO || '');
+        
+        const sumVenda = edits.reduce((acc, curr) => acc + (parseFloat(curr.MEDIA_VENDA_MENSAL) || 0), 0);
+        setMediaVenda(sumVenda);
+        
+        let totalMax = 0;
+        edits.forEach(prod => {
+          const draft = draftEdits[`${prod.EMPRESA}_${prod.COD_INTERNO}`];
+          if (draft && draft.max !== undefined) {
+            totalMax += draft.max;
+          } else {
+            totalMax += parseFloat(prod.QTD_MAX_REAL) || 0;
+          }
+        });
+        
+        setMax(totalMax);
+        setSelectedLojas(edits.map(p => p.EMPRESA));
+      }
+    }
+  }, [simulationToEdit, simulatedProducts, draftEdits]);
 
   // Dependent dropdowns
   const grupos = useMemo(() => {
@@ -30,6 +106,9 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
     if (!grupo) return [];
     return [...new Set(data.filter(d => d.DESCRICAO_GRUPO === grupo).map(d => d.DESCRICAO_SUBGRUPO))].sort();
   }, [grupo, data]);
+
+  // Utiliza os mesmos papéis e ordem do PivotTable
+  const papeisCategoria = ['TOP', 'PREMIUM', 'INTERMEDIARIO', 'COMBATE'];
 
   const handleLojaToggle = (loja) => {
     setSelectedLojas(prev =>
@@ -48,17 +127,18 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
 
     // Usa setTimeout para liberar a thread de UI e renderizar o spinner
     setTimeout(() => {
-      const fakeId = `SIM-${Date.now()}`;
+      const fakeId = simulationToEdit ? simulationToEdit : `SIM-${Date.now()}`;
       const totalMax = parseFloat(max) || 0;
       const totalVenda = parseFloat(mediaVenda) || 0;
       const unitPrice = parseFloat(preco) || 0;
       const unitCost = parseFloat(custo) || 0;
 
-      // Calcular share de venda por loja na categoria (subgrupo)
+      // Calcular share de venda por loja na categoria (subgrupo + papel)
       const categoryData = data.filter(d =>
         d.DESCRICAO_SECAO === secao &&
         d.DESCRICAO_GRUPO === grupo &&
-        d.DESCRICAO_SUBGRUPO === subgrupo
+        d.DESCRICAO_SUBGRUPO === subgrupo &&
+        d.REFERENCIA === papelCategoria
       );
 
       const lojaSales = {};
@@ -83,7 +163,7 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
         }
 
         const lojaMax = Math.round(totalMax * weight);
-        
+
         let lojaMin = 0;
         if (lojaMax > 0) {
           if (lojaMax <= 2) lojaMin = 1;
@@ -115,17 +195,32 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
           VLR_ESTOQUE_CUSTO: lojaMax * unitCost,
           CURVA: 'Simulação',
           COMPRADOR: 'SIMULADOR',
-          CLASSIFICACAO: 'SIMULADO',
+          REFERENCIA: papelCategoria,
           INATIVO_COMPRA: 'F',
           INATIVO_COMPRA_REAL: 'F',
           LUCRO_BRUTO_30D: (unitPrice - unitCost) * lojaVenda,
-          PAPEL_CATEGORIA: 'Simulação',
+          PAPEL_CATEGORIA: papelCategoria,
           isSimulation: true
         };
       });
 
       // Disparar o envio para o App (que vai injetar na state global + draftEdits)
-      onAddSimulation(newSimulations);
+      if (simulationToEdit && onUpdateSimulation) {
+        onUpdateSimulation(fakeId, newSimulations);
+      } else {
+        onAddSimulation(newSimulations);
+      }
+      
+      if (setFilters) {
+        setFilters(prev => ({
+          ...prev,
+          DESCRICAO_SECAO: [secao],
+          DESCRICAO_GRUPO: [grupo],
+          DESCRICAO_SUBGRUPO: [subgrupo],
+          REFERENCIA: [papelCategoria]
+        }));
+      }
+
       setIsSimulating(false);
       onClose();
     }, 100);
@@ -134,9 +229,9 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <form onSubmit={handleSubmit} className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '700px', width: '90%', padding: 0 }}>
-        
+
         <div className="modal-header">
-          <h3><Plus size={24} /> Simular Novo Produto</h3>
+          <h3>{simulationToEdit ? <Edit2 size={24} /> : <Plus size={24} />} {simulationToEdit ? 'Editar Simulação' : 'Simular Novo Produto'}</h3>
           <button type="button" className="close-btn" onClick={onClose}><X size={20} /></button>
         </div>
 
@@ -175,26 +270,33 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem' }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>SEÇÃO</label>
-              <select className="search-input" value={secao} onChange={e => { setSecao(e.target.value); setGrupo(''); setSubgrupo(''); }} required>
+              <select className="search-input" value={secao} onChange={e => { setSecao(e.target.value); setGrupo(''); setSubgrupo(''); setPapelCategoria(''); }} required>
                 <option value="">Selecione...</option>
                 {secoes.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>GRUPO</label>
-              <select className="search-input" value={grupo} onChange={e => { setGrupo(e.target.value); setSubgrupo(''); }} required disabled={!secao}>
+              <select className="search-input" value={grupo} onChange={e => { setGrupo(e.target.value); setSubgrupo(''); setPapelCategoria(''); }} required disabled={!secao}>
                 <option value="">Selecione...</option>
                 {grupos.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>SUBGRUPO</label>
-              <select className="search-input" value={subgrupo} onChange={e => setSubgrupo(e.target.value)} required disabled={!grupo}>
+              <select className="search-input" value={subgrupo} onChange={e => { setSubgrupo(e.target.value); setPapelCategoria(''); }} required disabled={!grupo}>
                 <option value="">Selecione...</option>
                 {subgrupos.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>PAPEL CATEGORIA</label>
+              <select className="search-input" value={papelCategoria} onChange={e => setPapelCategoria(e.target.value)} required disabled={!subgrupo}>
+                <option value="">Selecione...</option>
+                {papeisCategoria.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
           </div>
@@ -214,25 +316,29 @@ const SimulateProductModal = ({ isOpen, onClose, data, onAddSimulation }) => {
               <input type="number" step="0.01" min="0" className="search-input" value={preco} onChange={e => setPreco(e.target.value)} required />
             </div>
             <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>TOTAL EST. VENDA (MÊS)</label>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>R$ ESPERADO VENDA (30D)</label>
               <input type="number" min="0" className="search-input" value={mediaVenda} onChange={e => setMediaVenda(e.target.value)} required />
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', marginTop: '0.5rem', background: 'rgba(56, 189, 248, 0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.5rem', background: 'rgba(56, 189, 248, 0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
             <div>
               <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>TOTAL QTD MÁXIMA (REDE)</label>
-              <input type="number" min="0" className="search-input" value={max} onChange={e => setMax(e.target.value)} required />
+              <input type="number" min="0" className="search-input" value={max} onChange={e => handleMaxChange(e.target.value)} required />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>COBERTURA (DIAS DE ESTOQUE)</label>
+              <input type="number" min="0" className="search-input" value={diasEstoque} onChange={e => handleDiasChange(e.target.value)} placeholder="Calculado auto." />
             </div>
           </div>
 
         </div>
 
         <div className="modal-footer" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: '20px', paddingTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-          <button type="button" className="close-btn" onClick={onClose} style={{ padding: '10px 20px', fontSize: '0.95rem' }}>Cancelar</button>
-          <button type="submit" className="btn-save" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '0.95rem', background: isSimulating ? 'rgba(56, 189, 248, 0.5)' : undefined, cursor: isSimulating ? 'not-allowed' : 'pointer' }} disabled={isSimulating || !descricao || !secao || selectedLojas.length === 0 || !max || !mediaVenda}>
-            {isSimulating ? <Activity size={18} className="spin" /> : <Plus size={18} />}
-            {isSimulating ? 'Calculando Share...' : 'Simular Produto'}
+          <button type="button" className="close-btn" id='cancelar-btn-simular' onClick={onClose} style={{ padding: '10px 20px', fontSize: '0.95rem' }}>Cancelar</button>
+          <button type="submit" className="btn-save" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontSize: '0.95rem', background: isSimulating ? 'rgba(56, 189, 248, 0.5)' : undefined, cursor: isSimulating ? 'not-allowed' : 'pointer' }} disabled={isSimulating || !descricao || !secao || selectedLojas.length === 0 || !max || !mediaVenda || !papelCategoria}>
+            {isSimulating ? <Activity size={18} className="spin" /> : (simulationToEdit ? <Edit2 size={18} /> : <Plus size={18} />)}
+            {isSimulating ? 'Calculando Share...' : (simulationToEdit ? 'Salvar Simulação' : 'Simular Produto')}
           </button>
         </div>
 

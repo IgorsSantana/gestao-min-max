@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, Edit2, Trash2 } from 'lucide-react';
 import './PivotTable.css';
 
 const formatCurrency = (val) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -49,7 +49,7 @@ const getPapelCategoriaStyle = (str) => {
 
 import TreeWorker from '../workers/treeWorker?worker';
 
-const PivotRow = React.memo(({ node, isTotal = false, onEditChange, drillDownFields, modelosList, showProfitCols, showPerf90dCols, path = '', selectedRowKey, setSelectedRowKey }) => {
+const PivotRow = React.memo(({ node, isTotal = false, onEditChange, onEditSimulationRequest, onRemoveSimulation, drillDownFields, modelosList, showProfitCols, showPerf90dCols, path = '', selectedRowKey, setSelectedRowKey }) => {
   const [expanded, setExpanded] = useState(false);
   const m = node.metrics;
 
@@ -176,6 +176,9 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, drillDownFie
             {node.field === 'DESCRICAO_PRODUTO' && String(node.rows[0]?.COD_INTERNO || '').startsWith('SIM-') && (
               <span style={{ 
                 marginLeft: '8px', 
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
                 fontSize: '0.65rem', 
                 background: 'rgba(245, 158, 11, 0.2)', 
                 color: '#fcd34d', 
@@ -184,6 +187,32 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, drillDownFie
                 border: '1px solid rgba(245, 158, 11, 0.4)'
               }}>
                 SIMULADO
+                <Edit2 
+                  size={10} 
+                  style={{ cursor: 'pointer', opacity: 0.8 }} 
+                  title="Editar Simulação"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onEditSimulationRequest) {
+                      onEditSimulationRequest(node.rows[0].COD_INTERNO);
+                    }
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                  onMouseLeave={e => e.currentTarget.style.opacity = 0.8}
+                />
+                <Trash2
+                  size={10}
+                  style={{ cursor: 'pointer', opacity: 0.8, color: '#ef4444' }}
+                  title="Excluir Simulação"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onRemoveSimulation) {
+                      onRemoveSimulation(node.rows[0].COD_INTERNO);
+                    }
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                  onMouseLeave={e => e.currentTarget.style.opacity = 0.8}
+                />
               </span>
             )}
           </div>
@@ -302,6 +331,9 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, drillDownFie
         </td>
         {showProfitCols && (
           <React.Fragment>
+            <td className="text-right" style={{ whiteSpace: 'nowrap', backgroundColor: '#ffffff', border: '1px solid #000000', color: '#10b981', fontWeight: 'bold' }}>
+              {!isTotal && (isProductRow || isSkuRow) ? formatCurrency((parseFloat(node.rows[0].PRECO_VAREJO) || 0) - (parseFloat(node.rows[0].CUSTO_GERENC) || 0)) : ''}
+            </td>
             <td className="text-right" style={{ whiteSpace: 'nowrap', backgroundColor: '#ffffff', border: '1px solid #000000', color: percLucroVarejo < 0 ? '#ef4444' : '#10b981', fontWeight: 'bold' }}>
               {percLucroVarejo !== 0 || m.valMaxNovo > 0 || isProductRow || isSkuRow ? `${percLucroVarejo.toFixed(2).replace('.', ',')}%` : ''}
             </td>
@@ -391,7 +423,7 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, drillDownFie
             </td>
           </React.Fragment>
         )}
-        <td className="text-right">{formatCurrency(m.valMaxAtual)}</td>
+        <td className="text-right">{formatCurrency(m.valMaxNovo)}</td>
         <td className="text-right">{formatCurrency(m.mediaVendaMensal)}</td>
         <td className="text-center">
           {isTotal ? (
@@ -436,7 +468,7 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, drillDownFie
         <td className="text-right font-bold" style={{ backgroundColor: 'rgba(239, 68, 68, 0.02)', color: '#ef4444' }}>{formatPerc(saving)}</td>
       </tr>
       {expanded && hasChildren && node.children.map((child, i) => (
-        <PivotRow key={`${child.key}-${i}`} node={child} onEditChange={onEditChange} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} path={currentPath} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} />
+        <PivotRow key={`${child.key}-${i}`} node={child} onEditChange={onEditChange} onEditSimulationRequest={onEditSimulationRequest} onRemoveSimulation={onRemoveSimulation} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} path={currentPath} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} />
       ))}
     </React.Fragment>
   );
@@ -475,7 +507,7 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, drillDownFie
   );
 });
 
-const PivotTable = ({ data, drillDownFields, title, onEditChange, modelosList, showProfitCols, showPerf90dCols, draftEdits }) => {
+const PivotTable = ({ data, drillDownFields, title, onEditChange, onEditSimulationRequest, onRemoveSimulation, modelosList, showProfitCols, showPerf90dCols, draftEdits }) => {
   const [selectedRowKey, setSelectedRowKey] = useState(null);
   const [tree, setTree] = useState([]);
   const [isBuilding, setIsBuilding] = useState(false);
@@ -581,7 +613,7 @@ const PivotTable = ({ data, drillDownFields, title, onEditChange, modelosList, s
           <tr>
             <th style={{ backgroundColor: '#162c46' }}></th>
             <th className="text-center" colSpan="7" style={{ backgroundColor: '#0f172a', color: '#94a3b8', fontSize: '0.75rem', letterSpacing: '1px' }}>DADOS CADASTRAIS</th>
-            <th className="text-center" colSpan={showProfitCols ? 6 : 2} style={{ backgroundColor: '#1e293b', color: '#94a3b8', fontSize: '0.75rem', letterSpacing: '1px' }}>PRECIFICAÇÃO</th>
+            <th className="text-center" colSpan={showProfitCols ? 7 : 2} style={{ backgroundColor: '#1e293b', color: '#94a3b8', fontSize: '0.75rem', letterSpacing: '1px' }}>PRECIFICAÇÃO</th>
             <th className="text-center" colSpan="3" style={{ backgroundColor: '#0f172a', color: '#94a3b8', fontSize: '0.75rem', letterSpacing: '1px' }}>ESTOQUE / COBERTURA</th>
             {showPerf90dCols && <th className="text-center" colSpan="17" style={{ backgroundColor: '#172554', color: '#93c5fd', fontSize: '0.75rem', letterSpacing: '1px' }}>VENDA</th>}
             <th className="text-center" colSpan="2" style={{ backgroundColor: '#0f172a', color: '#94a3b8', fontSize: '0.75rem', letterSpacing: '1px' }}>INDICADORES</th>
@@ -612,6 +644,13 @@ const PivotTable = ({ data, drillDownFields, title, onEditChange, modelosList, s
             </th>
             {showProfitCols && (
               <React.Fragment>
+                <th 
+                  className="text-right" 
+                  style={{ whiteSpace: 'nowrap', width: '85px', color: '#10b981' }}
+                  title="Margem de Contribuição Unitária (Preço Varejo - Custo Gerencial)"
+                >
+                  MCU (R$)
+                </th>
                 <th className="text-right" title="Margem de Lucro Bruto (%) sobre o Varejo" style={{ whiteSpace: 'nowrap', width: '85px' }}>% LUCRO VAR.</th>
                 <th className="text-right" title="% Competitividade (Largura)" style={{ whiteSpace: 'nowrap', width: '85px' }}>% COMP.</th>
                 <th className="text-right" title="% Lucro Encarte (Comprimento)" style={{ whiteSpace: 'nowrap', width: '85px' }}>% L. ENCARTE</th>
@@ -659,7 +698,7 @@ const PivotTable = ({ data, drillDownFields, title, onEditChange, modelosList, s
         </thead>
         <tbody>
           {tree.map((node, i) => (
-            <PivotRow key={`${node.key}-${i}`} node={node} onEditChange={onEditChange} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} />
+            <PivotRow key={`${node.key}-${i}`} node={node} onEditChange={onEditChange} onEditSimulationRequest={onEditSimulationRequest} onRemoveSimulation={onRemoveSimulation} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} />
           ))}
         </tbody>
         <tfoot>

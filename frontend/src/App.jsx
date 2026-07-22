@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useDeferredValue, Suspense, lazy }
 import api from './services/api';
 import useStore from './store/useStore';
 import toast, { Toaster } from 'react-hot-toast';
-import { RefreshCw, AlertTriangle, TrendingUp, Activity, Save, PieChart, Info, X, Clock, Menu, Filter, Search, Sparkles } from 'lucide-react';
+import { RefreshCw, AlertTriangle, TrendingUp, Activity, Save, PieChart, Info, X, Clock, Menu, Filter, Search, Sparkles, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import SidebarFilters from './components/SidebarFilters';
 import PivotTable from './components/PivotTable';
 const SimulateProductModal = lazy(() => import('./components/SimulateProductModal'));
@@ -54,29 +55,29 @@ function LoginScreen({ onLogin }) {
       <div className="glass-panel" style={{ padding: '3rem', borderRadius: '12px', textAlign: 'center', maxWidth: '400px', width: '100%' }}>
         <h2>Login Min/Max</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Identifique-se para acessar o sistema.</p>
-        
+
         {error && <div style={{ color: '#ef4444', marginBottom: '1rem', padding: '8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px', fontSize: '0.9rem' }}>{error}</div>}
 
-        <input 
-          type="text" 
-          placeholder="Nome de Usuário" 
+        <input
+          type="text"
+          placeholder="Nome de Usuário"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           style={{ width: '100%', padding: '12px', marginBottom: '1rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
           onKeyDown={(e) => { if (e.key === 'Enter') document.getElementById('pwdInput').focus(); }}
         />
-        <input 
+        <input
           id="pwdInput"
-          type="password" 
-          placeholder="Senha" 
+          type="password"
+          placeholder="Senha"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           style={{ width: '100%', padding: '12px', marginBottom: '1.5rem', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
           onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
         />
-        <button 
-          className="btn-save" 
-          onClick={handleLogin} 
+        <button
+          className="btn-save"
+          onClick={handleLogin}
           disabled={!username || !password || loading}
           style={{ width: '100%', padding: '12px', justifyContent: 'center' }}
         >
@@ -84,8 +85,8 @@ function LoginScreen({ onLogin }) {
         </button>
 
         <div style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'left', padding: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px' }}>
-          <strong>Contas de teste:</strong><br/>
-          👤 admin | 🔑 admin123<br/>
+          <strong>Contas de teste:</strong><br />
+          👤 admin | 🔑 admin123<br />
           👤 comprador | 🔑 123456
         </div>
       </div>
@@ -99,22 +100,38 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-  
+  const [simulationToEdit, setSimulationToEdit] = useState(null);
+
   // States para colunas da PivotTable
   const [showProfitCols, setShowProfitCols] = useState(false);
   const [showPerf90dCols, setShowPerf90dCols] = useState(false);
-  
+
   // State para filtros dinâmicos
   const [filters, setFilters] = useState({
     NOME_LOJA: [],
     CURVA: [],
+    REFERENCIA: [],
+    MODELO: [],
     COMPRADOR: [],
     DESCRICAO_SECAO: [],
     DESCRICAO_GRUPO: [],
-    DESCRICAO_SUBGRUPO: [],
-    REFERENCIA: [],
-    MODELO: []
+    DESCRICAO_SUBGRUPO: []
   });
+
+  const hasActiveFilters = Object.values(filters).some(arr => arr.length > 0);
+
+  const clearAllFilters = () => {
+    setFilters({
+      NOME_LOJA: [],
+      CURVA: [],
+      REFERENCIA: [],
+      MODELO: [],
+      COMPRADOR: [],
+      DESCRICAO_SECAO: [],
+      DESCRICAO_GRUPO: [],
+      DESCRICAO_SUBGRUPO: []
+    });
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -143,14 +160,16 @@ function App() {
   // Zustand Global State (Substitui os states locais)
   const draftEdits = useStore((state) => state.draftEdits);
   const setDraftEdits = useStore((state) => state.setDraftEdits);
-  const clearDraftEdits = useStore((state) => state.clearDraftEdits);
+  const clearDraftEdits = useStore(state => state.clearDraftEdits);
   const simulatedProducts = useStore((state) => state.simulatedProducts);
-  const addSimulatedProducts = useStore((state) => state.addSimulatedProducts);
+  const addSimulatedProducts = useStore(state => state.addSimulatedProducts);
+  const updateSimulatedProducts = useStore(state => state.updateSimulatedProducts);
+  const removeSimulatedProduct = useStore(state => state.removeSimulatedProduct);
 
   // Novidades e Docs
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
-  
+
   // State para a lista de modelos vindos do DB
   const [modelosList, setModelosList] = useState([]);
 
@@ -159,7 +178,7 @@ function App() {
     setError(null);
     try {
       const url = `/api/estoque${force ? '?force=true' : ''}`;
-      
+
       const [response, resModelos, resPerf] = await Promise.all([
         api.get(url),
         api.get('/api/modelos'),
@@ -256,23 +275,23 @@ function App() {
           COMPRADOR: item.COMPRADOR ? String(item.COMPRADOR).trim() : 'NÃO INFORMADO',
           CURVA: item.CURVA ? String(item.CURVA).trim() : 'OUTROS',
           DESCRICAO_PRODUTO: `${item.COD_INTERNO || ''} - ${item.DESCRICAO_PRODUTO || ''}`.trim(),
-          
+
           PERF_VENDA_TOTAL: perf.vendaTotal || 0,
           PERF_QTD_TOTAL: perf.qtdTotal || 0,
           PERF_LUCRO_TOTAL: perf.lucroTotal || 0,
-          
+
           PERF_REBAIXO_VALOR: perf.promoRebaixoTotal || 0,
           PERF_REBAIXO_QTD: perf.promoRebaixoQtd || 0,
           PERF_REBAIXO_LUCRO: perf.promoRebaixoLucro || 0,
-          
+
           PERF_ENCARTE_VALOR: perf.promoEncarteTotal || 0,
           PERF_ENCARTE_QTD: perf.promoEncarteQtd || 0,
           PERF_ENCARTE_LUCRO: perf.promoEncarteLucro || 0,
-          
+
           PERF_TV_VALOR: perf.promoTvTotal || 0,
           PERF_TV_QTD: perf.promoTvQtd || 0,
           PERF_TV_LUCRO: perf.promoTvLucro || 0,
-          
+
           PERF_PERDA_TOTAL: perf.perdaTotal || 0
         };
       });
@@ -346,6 +365,49 @@ function App() {
     });
   }, [allData, deferredFilters, debouncedSearchQuery, deferredSpecialFilters]);
 
+  const handleExportXLS = () => {
+    if (!filteredData || filteredData.length === 0) {
+      toast.error('Não há dados para exportar com os filtros atuais.');
+      return;
+    }
+
+    try {
+      // Formata os dados para a planilha
+      const dataToExport = filteredData.map(item => ({
+        'Loja': item.NOME_LOJA,
+        'Seção': item.DESCRICAO_SECAO,
+        'Grupo': item.DESCRICAO_GRUPO,
+        'Subgrupo': item.DESCRICAO_SUBGRUPO,
+        'Cód. Interno': item.COD_INTERNO,
+        'Descrição Produto': item.DESCRICAO_PRODUTO,
+        'Referência': item.REFERENCIA || '',
+        'Modelo': item.MODELO || '',
+        'EAN': item.COD_EAN,
+        'Comprador': item.COMPRADOR,
+        'Curva': item.CURVA,
+        'Inativo Compra': item.INATIVO_COMPRA === 'T' ? 'Sim' : 'Não',
+        'Estoque Min': item.ESTOQUE_MINIMO_ATUAL,
+        'Estoque Max': item.ESTOQUE_MAXIMO_ATUAL,
+        'Média Venda Mensal': parseFloat(item.MEDIA_VENDA_MENSAL || 0).toFixed(2),
+        'Preço Varejo': parseFloat(item.PRECO_VAREJO || 0).toFixed(2),
+        'Custo Reposição': parseFloat(item.CUSTO_REPOSICAO || 0).toFixed(2),
+        '% Lucro Varejo': parseFloat(item.PERC_LUCRO_VAREJO || 0).toFixed(2),
+        'Valor Estoque Max': parseFloat(item.VALOR_ESTOQUE_MAX_ATUAL || 0).toFixed(2)
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Dados Filtrados');
+
+      // Gera o arquivo e força o download
+      XLSX.writeFile(workbook, 'gestao-min-max-export.xlsx');
+      toast.success('Arquivo XLS exportado com sucesso!');
+    } catch (err) {
+      console.error('Erro ao exportar XLS:', err);
+      toast.error('Erro ao exportar os dados para XLS.');
+    }
+  };
+
   // Função para interceptar o clique num gráfico e filtrar
   const handleChartClick = (filterType, value) => {
     if (!value) return;
@@ -415,25 +477,22 @@ function App() {
   };
 
   const handleAddSimulation = (newProducts) => {
-    setSimulatedProducts(prev => [...prev, ...newProducts]);
+    addSimulatedProducts(newProducts);
+  };
 
-    // Injeta imediatamente as sugestões de min/max no rascunho 
-    // para que a tabela e as fórmulas do dashboard já o contabilizem
-    setDraftEdits(prev => {
-      const newState = { ...prev };
-      newProducts.forEach(prod => {
-        const rowId = `${prod.EMPRESA}_${prod.COD_INTERNO}`;
-        newState[rowId] = {
-          idEmpresa: prod.EMPRESA,
-          idProduto: prod.IDPRODUTO,
-          idSubProduto: prod.COD_INTERNO,
-          min: prod.QTD_MIN_REAL,
-          max: prod.QTD_MAX_REAL,
-          inativoCompra: 'F'
-        };
-      });
-      return newState;
-    });
+  const handleUpdateSimulation = (codInterno, newProducts) => {
+    updateSimulatedProducts(codInterno, newProducts);
+  };
+
+  const handleEditSimulationRequest = (codInterno) => {
+    setSimulationToEdit(codInterno);
+    setIsSimulateModalOpen(true);
+  };
+
+  const handleRemoveSimulation = (codInterno) => {
+    if (window.confirm('Tem certeza que deseja excluir esta simulação?')) {
+      removeSimulatedProduct(codInterno);
+    }
   };
 
   const [saving, setSaving] = useState(false);
@@ -442,7 +501,7 @@ function App() {
     setSaving(true);
     try {
       const auditLogs = [];
-      
+
       // Otimização O(1): Cria um mapa do dataset para busca instantânea em vez de rodar .find() para cada rascunho
       const dataMap = new Map();
       data.forEach(r => dataMap.set(`${r.EMPRESA}_${r.COD_INTERNO}`, r));
@@ -453,7 +512,7 @@ function App() {
           // Encontra o dado original para mandar o que não foi modificado (caso editou só o max, manda o min original)
           const rowId = `${draft.idEmpresa}_${draft.idSubProduto}`;
           const originalRow = dataMap.get(rowId);
-          
+
           if (originalRow) {
             const minAntigo = parseFloat(originalRow.ESTOQUE_MINIMO_ATUAL);
             const maxAntigo = parseFloat(originalRow.ESTOQUE_MAXIMO_ATUAL);
@@ -527,7 +586,7 @@ function App() {
     filteredData.forEach(item => {
       const rowId = `${item.EMPRESA}_${item.COD_INTERNO}`;
       map.set(rowId, item);
-      
+
       const atual = parseFloat(item.VALOR_ESTOQUE_MAX_ATUAL) || 0;
       totalMax += atual;
 
@@ -547,7 +606,7 @@ function App() {
     let totalMax = baseTotais.totalMax;
     let capLib = 0;
     let totalMedia = baseTotais.totalMedia;
-    
+
     // Clona o lojasData para mutação segura sem afetar os dados base
     const lojasData = {};
     for (const l in baseTotais.lojasData) {
@@ -559,10 +618,10 @@ function App() {
       const draft = draftEdits[rowId];
       const item = mapFilteredData.get(rowId);
       if (!item) return; // Ignora se o item editado não está na busca atual
-      
+
       const preco = parseFloat(item.PRECO_VAREJO) || 0;
       const atual = parseFloat(item.VALOR_ESTOQUE_MAX_ATUAL) || 0;
-      
+
       let novo = atual;
       if (draft.max !== undefined) {
         novo = draft.max * preco;
@@ -571,9 +630,9 @@ function App() {
       }
 
       const diffTotal = novo - atual;
-      
+
       totalMax += diffTotal;
-      
+
       if (diffTotal < 0) capLib += Math.abs(diffTotal);
 
       const loja = item.NOME_LOJA;
@@ -804,7 +863,7 @@ function App() {
 
           <div className="modal-body">
             <p>
-              Você está prestes a alterar limites de <strong>{Object.keys(draftEdits).length}</strong> produto(s) no banco de dados corporativo. Por favor, revise as alterações na lista abaixo:
+              Você está prestes a alterar limites de <strong>{Object.keys(groupedDrafts).length}</strong> produto(s) no banco de dados corporativo. Por favor, revise as alterações na lista abaixo:
             </p>
 
             <div className="confirm-list-container">
@@ -849,11 +908,11 @@ function App() {
             Gestão Min/Max
             <span style={{ fontSize: '0.65rem', background: 'rgba(56, 189, 248, 0.2)', color: '#38bdf8', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, letterSpacing: '0.5px' }}>v2.5.0</span>
           </h2>
-          
+
           <div className="header-search" style={{ position: 'relative', display: 'flex', alignItems: 'center', width: '300px' }}>
             <Search size={16} style={{ position: 'absolute', left: '10px', color: 'var(--text-secondary)' }} />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Pesquisar Produto, Cód, EAN..."
               value={searchQuery || ''}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -884,38 +943,49 @@ function App() {
                 cursor: 'pointer',
                 transition: 'all 0.2s ease-in-out'
               }}
-              onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; e.currentTarget.style.transform = 'translateY(-2px)'}}
-              onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; e.currentTarget.style.transform = 'translateY(0)'}}
+              onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+              onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'; e.currentTarget.style.transform = 'translateY(0)' }}
             >
               Documentação
             </button>
           )}
           <button
-              onClick={() => setShowWhatsNew(true)}
-              className="btn-action animate-fade-in"
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                background: 'linear-gradient(45deg, #8b5cf6, #ec4899)',
-                color: 'white',
-                border: 'none',
-                padding: '0.4rem 0.8rem',
-                borderRadius: '6px',
-                fontSize: '0.8rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-                boxShadow: '0 4px 15px rgba(236, 72, 153, 0.3)',
-                transition: 'all 0.2s ease-in-out'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-            >
-              <Sparkles size={16} />
-              Novidades
+            onClick={() => setShowWhatsNew(true)}
+            className="btn-action animate-fade-in"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: 'linear-gradient(45deg, #8b5cf6, #ec4899)',
+              color: 'white',
+              border: 'none',
+              padding: '0.4rem 0.8rem',
+              borderRadius: '6px',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+              boxShadow: '0 4px 15px rgba(236, 72, 153, 0.3)',
+              transition: 'all 0.2s ease-in-out'
+            }}
+            onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+            onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <Sparkles size={16} />
+            Novidades
+          </button>
+
+          {hasActiveFilters && (
+            <button className="btn-save animate-fade-in" onClick={clearAllFilters} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '8px 15px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <X size={16} /> Limpar Filtros
             </button>
+          )}
+
           <button className="btn-save" onClick={() => setIsFilterModalOpen(true)} style={{ background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '8px 15px', display: 'flex', gap: '8px', alignItems: 'center' }}>
             <Filter size={16} /> Filtros Avançados
           </button>
-          
+
+          <button className="btn-save animate-fade-in" onClick={handleExportXLS} style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '8px 15px', display: 'flex', gap: '8px', alignItems: 'center' }} title="Exportar dados filtrados para Excel">
+            <Download size={16} /> Exportar XLS
+          </button>
+
           <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 5px' }}></div>
 
           <button className="btn-refresh-sm" onClick={() => fetchData(true)} disabled={loading} title="Forçar Leitura do DB2 (Ignora Cache)">
@@ -927,9 +997,9 @@ function App() {
           <button className="btn-refresh-sm" onClick={() => setIsAuditModalOpen(true)} title="Histórico de Alterações">
             <Clock size={18} />
           </button>
-          
+
           <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 5px' }}></div>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(0,0,0,0.2)', padding: '4px 10px', borderRadius: '20px' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{loggedUser}</span>
             <button className="btn-refresh-sm" onClick={() => {
@@ -1015,7 +1085,7 @@ function App() {
             {/* Legendas e Controles */}
             <div className="tabs-container" style={{ justifyContent: 'space-between', borderBottom: 'none', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <button 
+                <button
                   className="btn-action"
                   onClick={() => setShowProfitCols(!showProfitCols)}
                   style={{
@@ -1032,7 +1102,7 @@ function App() {
                 >
                   {showProfitCols ? 'RECOLHER PRECIFICAÇÃO' : 'EXIBIR PRECIFICAÇÃO'}
                 </button>
-                <button 
+                <button
                   className="btn-action"
                   onClick={() => setShowPerf90dCols(!showPerf90dCols)}
                   style={{
@@ -1069,6 +1139,8 @@ function App() {
                 drillDownFields={['DESCRICAO_SECAO', 'DESCRICAO_GRUPO', 'DESCRICAO_SUBGRUPO', 'DESCRICAO_PRODUTO', 'NOME_LOJA']}
                 title="ESTRUTURA MERCADOLÓGICA (Drill-Down até Nível Produto)"
                 onEditChange={handleEditChange}
+                onEditSimulationRequest={handleEditSimulationRequest}
+                onRemoveSimulation={handleRemoveSimulation}
                 modelosList={modelosList}
                 showProfitCols={showProfitCols}
                 showPerf90dCols={showPerf90dCols}
@@ -1079,7 +1151,7 @@ function App() {
             {hasDrafts && (
               <div className="floating-save-panel animate-fade-in">
                 <div className="draft-info">
-                  <strong>{Object.keys(draftEdits).length}</strong> produto(s) modificado(s)
+                  <strong>{new Set(Object.values(draftEdits).map(d => d.idSubProduto)).size}</strong> produto(s) modificado(s)
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button className="btn-danger" onClick={() => clearDraftEdits()}>
@@ -1102,20 +1174,26 @@ function App() {
         {isSimulateModalOpen && <SimulateProductModal
           isOpen={isSimulateModalOpen}
           data={data}
-          onClose={() => setIsSimulateModalOpen(false)}
+          onClose={() => {
+            setIsSimulateModalOpen(false);
+            setSimulationToEdit(null);
+          }}
           onAddSimulation={handleAddSimulation}
+          onUpdateSimulation={handleUpdateSimulation}
+          setFilters={setFilters}
+          simulationToEdit={simulationToEdit}
         />}
         {isAuditModalOpen && <AuditHistoryModal
           isOpen={isAuditModalOpen}
           onClose={() => setIsAuditModalOpen(false)}
         />}
-        {showWhatsNew && <WhatsNewModal 
-          isOpen={showWhatsNew} 
-          onClose={() => setShowWhatsNew(false)} 
+        {showWhatsNew && <WhatsNewModal
+          isOpen={showWhatsNew}
+          onClose={() => setShowWhatsNew(false)}
         />}
-        {showDocs && <DocsModal 
-          isOpen={showDocs} 
-          onClose={() => setShowDocs(false)} 
+        {showDocs && <DocsModal
+          isOpen={showDocs}
+          onClose={() => setShowDocs(false)}
         />}
       </Suspense>
 
@@ -1146,6 +1224,11 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Assinatura */}
+      <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: 'auto' }}>
+        Desenvolvido por <strong style={{ color: 'var(--accent-color)' }}>Igor Santana</strong>
+      </div>
     </div>
   );
 }

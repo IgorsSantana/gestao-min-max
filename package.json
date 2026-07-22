@@ -4,6 +4,7 @@
   "description": "Este projeto é uma aplicação web completa (Full-Stack) projetada para análises aprofundadas sobre o controle de estoque mínimo e máximo da rede de supermercados, com foco na Estrutura Mercadológica. O objetivo da ferramenta é agrupar, de maneira dinâmica e instantânea, dados volumosos vindos de uma conexão ODBC (banco de dados IBM DB2), atuando como uma ferramenta de BI (Business Intelligence) moderna.",
   "main": "index.js",
   "scripts": {
+    "start": "concurrently -c \"cyan,magenta\" -n \"FRONTEND,BACKEND\" \"npm run dev --prefix frontend\" \"npm start --prefix backend\"",
     "dev": "concurrently -c \"cyan,magenta\" -n \"FRONTEND,BACKEND\" \"npm run dev --prefix frontend\" \"npm start --prefix backend\"",
     "dev:frontend": "npm run dev --prefix frontend",
     "dev:backend": "npm start --prefix backend"

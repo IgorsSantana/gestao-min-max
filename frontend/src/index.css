@@ -31,8 +31,8 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  padding: 2rem;
-  zoom: 0.9;
+  padding: 1rem;
+  zoom: 0.95;
 }
 
 /* Glassmorphism Utilities */
