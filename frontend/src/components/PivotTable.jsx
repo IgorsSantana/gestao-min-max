@@ -49,7 +49,7 @@ const getPapelCategoriaStyle = (str) => {
 
 import TreeWorker from '../workers/treeWorker?worker';
 
-const PivotRow = React.memo(({ node, isTotal = false, onEditChange, onEditSimulationRequest, onRemoveSimulation, drillDownFields, modelosList, showProfitCols, showPerf90dCols, path = '', selectedRowKey, setSelectedRowKey }) => {
+const PivotRow = React.memo(({ node, isTotal = false, onEditChange, onEditSimulationRequest, onRemoveSimulation, drillDownFields, modelosList, showProfitCols, showPerf90dCols, path = '', selectedRowKey, setSelectedRowKey, draftEdits = {} }) => {
   const [expanded, setExpanded] = useState(false);
   const m = node.metrics;
 
@@ -71,22 +71,28 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, onEditSimula
   const [localInativo, setLocalInativo] = useState(node.depth >= 3 && node.rows ? node.rows[0].INATIVO_COMPRA_REAL === 'T' : false);
 
   // Sincroniza estado local caso os dados globais mudem (Ex: botão Descartar Alterações)
+  // Prioriza o valor do rascunho global (draftEdits) para não sobrescrever o que o usuário digitou
   useEffect(() => {
+    const row = node.rows?.[0];
+    if (!row) return;
+    const draft = draftEdits[`${row.EMPRESA}_${row.COD_INTERNO}`];
+
     if (isSkuRow) {
-      setLocalMin(node.rows[0].QTD_MIN_REAL);
-      setLocalMax(node.rows[0].QTD_MAX_REAL);
+      setLocalMin(draft?.min !== undefined ? draft.min : row.QTD_MIN_REAL);
+      setLocalMax(draft?.max !== undefined ? draft.max : row.QTD_MAX_REAL);
     }
-    if (isProductRow && node.rows) {
-      setLocalReferencia(node.rows[0].REFERENCIA || '');
-      setLocalModelo(node.rows[0].MODELO || '');
-      setLocalCompetitividade(node.rows[0].PERC_COMPETITIVIDADE || 0);
-      setLocalLucroEncarte(node.rows[0].PERC_LUCRO_ENCARTE || 0);
-      setLocalLucroTv(node.rows[0].PERC_LUCRO_TV || 0);
+    if (isProductRow) {
+      setLocalReferencia(draft?.referencia !== undefined ? draft.referencia : (row.REFERENCIA || ''));
+      setLocalModelo(draft?.modelo !== undefined ? draft.modelo : (row.MODELO || ''));
+      setLocalCompetitividade(draft?.competitividade !== undefined ? draft.competitividade : (row.PERC_COMPETITIVIDADE || 0));
+      setLocalLucroEncarte(draft?.lucroEncarte !== undefined ? draft.lucroEncarte : (row.PERC_LUCRO_ENCARTE || 0));
+      setLocalLucroTv(draft?.lucroTv !== undefined ? draft.lucroTv : (row.PERC_LUCRO_TV || 0));
     }
-    if (node.depth >= 3 && node.rows) {
-      setLocalInativo(node.rows[0].INATIVO_COMPRA_REAL === 'T');
+    if (node.depth >= 3) {
+      const inativoVal = draft?.inativoCompra !== undefined ? draft.inativoCompra : row.INATIVO_COMPRA_REAL;
+      setLocalInativo(inativoVal === 'T');
     }
-  }, [isSkuRow, isProductRow, node.depth, node.rows]);
+  }, [isSkuRow, isProductRow, node.depth, node.rows, draftEdits]);
 
   const diff = m.valMaxNovo - m.valMaxAtual;
   const isDiffNegative = diff < 0;
@@ -467,8 +473,8 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, onEditSimula
         <td className="text-right font-bold text-accent" style={{ backgroundColor: 'rgba(16, 185, 129, 0.02)' }}>{formatMultiplier(elasticidade)}</td>
         <td className="text-right font-bold" style={{ backgroundColor: 'rgba(239, 68, 68, 0.02)', color: '#ef4444' }}>{formatPerc(saving)}</td>
       </tr>
-      {expanded && hasChildren && node.children.map((child, i) => (
-        <PivotRow key={`${child.key}-${i}`} node={child} onEditChange={onEditChange} onEditSimulationRequest={onEditSimulationRequest} onRemoveSimulation={onRemoveSimulation} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} path={currentPath} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} />
+      {expanded && hasChildren && node.children.map((child) => (
+        <PivotRow key={currentPath ? `${currentPath}-${child.key}` : child.key} node={child} onEditChange={onEditChange} onEditSimulationRequest={onEditSimulationRequest} onRemoveSimulation={onRemoveSimulation} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} path={currentPath} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} draftEdits={draftEdits} />
       ))}
     </React.Fragment>
   );
@@ -498,12 +504,22 @@ const PivotRow = React.memo(({ node, isTotal = false, onEditChange, onEditSimula
     pm.lucroBruto === nm.lucroBruto &&
     pm.valMaxNovo === nm.valMaxNovo;
 
+  // Verifica campos textuais/globais para garantir re-render quando alterados
+  const prevRow = prevProps.node.rows?.[0];
+  const nextRow = nextProps.node.rows?.[0];
+  const textFieldsEqual = 
+    (prevRow?.REFERENCIA || '') === (nextRow?.REFERENCIA || '') &&
+    (prevRow?.MODELO || '') === (nextRow?.MODELO || '') &&
+    (prevRow?.INATIVO_COMPRA_REAL || 'F') === (nextRow?.INATIVO_COMPRA_REAL || 'F');
+
   return (
     prevProps.node.key === nextProps.node.key &&
     metricsEqual &&
+    textFieldsEqual &&
     prevProps.showProfitCols === nextProps.showProfitCols &&
     prevProps.showPerf90dCols === nextProps.showPerf90dCols &&
-    prevProps.drillDownFields === nextProps.drillDownFields
+    prevProps.drillDownFields === nextProps.drillDownFields &&
+    prevProps.draftEdits === nextProps.draftEdits
   );
 });
 
@@ -549,7 +565,7 @@ const PivotTable = ({ data, drillDownFields, title, onEditChange, onEditSimulati
     // durante edições em massa ou digitações rápidas
     const handler = setTimeout(() => {
       workerRef.current.postMessage({ action: 'UPDATE_DRAFTS', draftEdits });
-    }, 400);
+    }, 800);
 
     return () => clearTimeout(handler);
   }, [draftEdits]);
@@ -697,8 +713,8 @@ const PivotTable = ({ data, drillDownFields, title, onEditChange, onEditSimulati
           </tr>
         </thead>
         <tbody>
-          {tree.map((node, i) => (
-            <PivotRow key={`${node.key}-${i}`} node={node} onEditChange={onEditChange} onEditSimulationRequest={onEditSimulationRequest} onRemoveSimulation={onRemoveSimulation} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} />
+          {tree.map((node) => (
+            <PivotRow key={node.key} node={node} onEditChange={onEditChange} onEditSimulationRequest={onEditSimulationRequest} onRemoveSimulation={onRemoveSimulation} drillDownFields={drillDownFields} modelosList={modelosList} showProfitCols={showProfitCols} showPerf90dCols={showPerf90dCols} selectedRowKey={selectedRowKey} setSelectedRowKey={setSelectedRowKey} draftEdits={draftEdits} />
           ))}
         </tbody>
         <tfoot>

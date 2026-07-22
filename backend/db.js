@@ -217,15 +217,14 @@ async function getPerformanceData() {
             EA.IDSUBPRODUTO
         `;
 
-        console.log("[DB2] Iniciando consulta de Vendas Promocionais (90 dias)...");
-        const sales = await connection.query(salesQuery);
-        
-        console.log("[DB2] Iniciando consulta de Vendas Totais (90 dias)...");
-        const totalSales = await connection.query(totalSalesQuery);
-        
-        console.log("[DB2] Iniciando consulta de Perdas (90 dias)...");
-        const losses = await connection.query(lossesQuery);
-        
+        console.log("[DB2] Iniciando consultas de performance em paralelo...");
+        const [sales, totalSales, losses] = await Promise.all([
+            connection.query(salesQuery),
+            connection.query(totalSalesQuery),
+            connection.query(lossesQuery)
+        ]);
+        console.log("[DB2] Consultas de performance concluídas.");
+
         return { sales, totalSales, losses };
     } catch (error) {
         console.error("Erro ao buscar dados de performance:", error);
@@ -251,41 +250,43 @@ async function updateLimites(updates) {
 
 
 
-        for (const update of updates) {
-            const productQueries = [];
+        // Processa produtos em lotes paralelos de 10 para performance
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < updates.length; i += CHUNK_SIZE) {
+            const chunk = updates.slice(i, i + CHUNK_SIZE);
+            await Promise.all(chunk.map(async (update) => {
+                const productQueries = [];
 
-            productQueries.push(
-                connection.query(sqlCompras, [
-                    update.QTDESTMINIMO,
-                    update.QTDESTMAXIMO,
-                    update.IDEMPRESA,
-                    update.IDPRODUTO,
-                    update.IDSUBPRODUTO
-                ])
-            );
-
-            if (update.INATIVO_COMPRA !== undefined) {
                 productQueries.push(
-                    connection.query(
-                        `UPDATE DBA.PRODUTO_GRADE SET FLAGINATIVOCOMPRA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                        [update.INATIVO_COMPRA, update.IDPRODUTO, update.IDSUBPRODUTO]
-                    )
+                    connection.query(sqlCompras, [
+                        update.QTDESTMINIMO,
+                        update.QTDESTMAXIMO,
+                        update.IDEMPRESA,
+                        update.IDPRODUTO,
+                        update.IDSUBPRODUTO
+                    ])
                 );
-            }
 
-            if (update.REFERENCIA !== undefined) {
-                productQueries.push(
-                    connection.query(
-                        `UPDATE DBA.PRODUTO_GRADE SET REFERENCIA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                        [update.REFERENCIA, update.IDPRODUTO, update.IDSUBPRODUTO]
-                    )
-                );
-            }
+                if (update.INATIVO_COMPRA !== undefined) {
+                    productQueries.push(
+                        connection.query(
+                            `UPDATE DBA.PRODUTO_GRADE SET FLAGINATIVOCOMPRA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                            [update.INATIVO_COMPRA, update.IDPRODUTO, update.IDSUBPRODUTO]
+                        )
+                    );
+                }
 
-            if (update.MODELO !== undefined) {
-                // A lógica de modelo envolve SELECT MAX e INSERT, sendo mais segura de rodar isoladamente 
-                // para evitar race conditions no mesmo loop (embora encapsulada em uma promessa assíncrona)
-                const modelPromise = (async () => {
+                if (update.REFERENCIA !== undefined) {
+                    productQueries.push(
+                        connection.query(
+                            `UPDATE DBA.PRODUTO_GRADE SET REFERENCIA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                            [update.REFERENCIA, update.IDPRODUTO, update.IDSUBPRODUTO]
+                        )
+                    );
+                }
+
+                if (update.MODELO !== undefined) {
+                    // A lógica de modelo envolve SELECT MAX e INSERT, sendo mais segura de rodar sequencialmente
                     const modelStr = update.MODELO ? update.MODELO.trim() : '';
                     let idModelo = null;
                     
@@ -300,43 +301,44 @@ async function updateLimites(updates) {
                         }
                     }
                     
-                    await connection.query(
-                        `UPDATE DBA.PRODUTO_GRADE SET IDMODELO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                        [idModelo, update.IDPRODUTO, update.IDSUBPRODUTO]
+                    productQueries.push(
+                        connection.query(
+                            `UPDATE DBA.PRODUTO_GRADE SET IDMODELO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                            [idModelo, update.IDPRODUTO, update.IDSUBPRODUTO]
+                        )
                     );
-                })();
-                productQueries.push(modelPromise);
-            }
+                }
 
-            if (update.PERC_COMPETITIVIDADE !== undefined) {
-                productQueries.push(
-                    connection.query(
-                        `UPDATE DBA.PRODUTO_GRADE SET LARGURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                        [update.PERC_COMPETITIVIDADE, update.IDPRODUTO, update.IDSUBPRODUTO]
-                    )
-                );
-            }
+                if (update.PERC_COMPETITIVIDADE !== undefined) {
+                    productQueries.push(
+                        connection.query(
+                            `UPDATE DBA.PRODUTO_GRADE SET LARGURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                            [update.PERC_COMPETITIVIDADE, update.IDPRODUTO, update.IDSUBPRODUTO]
+                        )
+                    );
+                }
 
-            if (update.PERC_LUCRO_ENCARTE !== undefined) {
-                productQueries.push(
-                    connection.query(
-                        `UPDATE DBA.PRODUTO_GRADE SET COMPRIMENTO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                        [update.PERC_LUCRO_ENCARTE, update.IDPRODUTO, update.IDSUBPRODUTO]
-                    )
-                );
-            }
+                if (update.PERC_LUCRO_ENCARTE !== undefined) {
+                    productQueries.push(
+                        connection.query(
+                            `UPDATE DBA.PRODUTO_GRADE SET COMPRIMENTO = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                            [update.PERC_LUCRO_ENCARTE, update.IDPRODUTO, update.IDSUBPRODUTO]
+                        )
+                    );
+                }
 
-            if (update.PERC_LUCRO_TV !== undefined) {
-                productQueries.push(
-                    connection.query(
-                        `UPDATE DBA.PRODUTO_GRADE SET ALTURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
-                        [update.PERC_LUCRO_TV, update.IDPRODUTO, update.IDSUBPRODUTO]
-                    )
-                );
-            }
+                if (update.PERC_LUCRO_TV !== undefined) {
+                    productQueries.push(
+                        connection.query(
+                            `UPDATE DBA.PRODUTO_GRADE SET ALTURA = ? WHERE IDPRODUTO = ? AND IDSUBPRODUTO = ?`,
+                            [update.PERC_LUCRO_TV, update.IDPRODUTO, update.IDSUBPRODUTO]
+                        )
+                    );
+                }
 
-            // Aguarda todas as queries deste produto terminarem em paralelo
-            await Promise.all(productQueries);
+                // Aguarda todas as queries deste produto terminarem em paralelo
+                await Promise.all(productQueries);
+            }));
         }
 
         await connection.commit();

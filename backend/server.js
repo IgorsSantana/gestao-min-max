@@ -141,13 +141,16 @@ app.post('/api/estoque/limites', async (req, res) => {
             // Invalidação Granular do Cache: Atualiza apenas os produtos alterados em RAM
             if (cacheData) {
                 updates.forEach(upd => {
-                    const idx = cacheData.findIndex(r => r.EMPRESA === upd.idEmpresa && r.COD_INTERNO === upd.idSubProduto);
+                    const idx = cacheData.findIndex(r => r.EMPRESA === upd.IDEMPRESA && r.COD_INTERNO === upd.IDSUBPRODUTO);
                     if (idx !== -1) {
-                        if (upd.min !== undefined) cacheData[idx].QTD_MIN_REAL = upd.min;
-                        if (upd.max !== undefined) cacheData[idx].QTD_MAX_REAL = upd.max;
-                        if (upd.inativoCompra !== undefined) cacheData[idx].INATIVO_COMPRA_REAL = upd.inativoCompra;
-                        if (upd.referencia !== undefined) cacheData[idx].REFERENCIA = upd.referencia;
-                        if (upd.modelo !== undefined) cacheData[idx].MODELO = upd.modelo;
+                        if (upd.QTDESTMINIMO !== undefined) cacheData[idx].ESTOQUE_MINIMO_ATUAL = upd.QTDESTMINIMO;
+                        if (upd.QTDESTMAXIMO !== undefined) cacheData[idx].ESTOQUE_MAXIMO_ATUAL = upd.QTDESTMAXIMO;
+                        if (upd.INATIVO_COMPRA !== undefined) cacheData[idx].INATIVO_COMPRA = upd.INATIVO_COMPRA;
+                        if (upd.REFERENCIA !== undefined) cacheData[idx].REFERENCIA = upd.REFERENCIA;
+                        if (upd.MODELO !== undefined) cacheData[idx].MODELO = upd.MODELO;
+                        if (upd.PERC_COMPETITIVIDADE !== undefined) cacheData[idx].PERC_COMPETITIVIDADE = upd.PERC_COMPETITIVIDADE;
+                        if (upd.PERC_LUCRO_ENCARTE !== undefined) cacheData[idx].PERC_LUCRO_ENCARTE = upd.PERC_LUCRO_ENCARTE;
+                        if (upd.PERC_LUCRO_TV !== undefined) cacheData[idx].PERC_LUCRO_TV = upd.PERC_LUCRO_TV;
                     }
                 });
                 console.log(`[Cache] Atualização granular concluída para ${updates.length} itens sob bloqueio seguro.`);
